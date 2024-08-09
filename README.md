@@ -54,4 +54,4 @@ if __name__ == '__main__':
 
 ## Summary
 
-You can find `functrace` on [PyPI](https://pypi.org/project/functrace) for installation and package details. For comprehensive documentation and usage guides, visit [Read the Docs](https://functrace.readthedocs.io).
+You can find `functrace` on [PyPI](https://pypi.org/project/functrace) for installation and package details. For comprehensive documentation and usage guides, visit [Read the Docs](https://functrace.readthedocs.io). For source code and contributions, check out the [GitHub repository](https://github.com/idanhazan/functrace).
