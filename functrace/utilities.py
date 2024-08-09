@@ -1,11 +1,10 @@
-from __future__ import annotations
+import inspect
+import math
+import types
+import typing
+import warnings
 
-from inspect import getlineno, getmodule, signature
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from types import FunctionType, MethodType, FrameType, ModuleType
-    from typing import Any, Callable, Dict, Optional, Tuple, Union
+from functrace.type_hints import *
 
 __all__ = ('FunctionCall', 'ElapsedTime')
 
@@ -14,19 +13,40 @@ class FunctionCall:
     """
     Represents a function call, encapsulating information about the function's
     execution, including its name, arguments, and the call pattern.
+
+    Parameters
+    ----------
+    func : callable
+        The function object being called.
+    args : tuple
+        Positional arguments passed to the function.
+    kwargs : dict
+        Keyword arguments passed to the function.
+    apply_defaults : bool
+        Whether to apply default values for missing arguments.
+    undefined_value : typing.Any
+        Value used to represent undefined arguments.
+    include : str or tuple of str or None
+        Specifies which arguments to include in the call representation.
+        If None, all arguments are included.
+    exclude : str or tuple of str or None
+        Specifies which arguments to exclude from the call representation.
+        If None, no arguments are excluded.
+    frame : types.FrameType
+        The frame object where the function is being called.
     """
     def __init__(
         self,
-        function: Callable[..., Any],
-        args: Tuple[str, ...],
-        kwargs: Dict[str, Any],
+        func: CallableType,
+        args: ArgsType,
+        kwargs: KwargsType,
         apply_defaults: bool,
-        undefined_value: Any,
-        include: Optional[Union[str, Tuple[str, ...]]],
-        exclude: Optional[Union[str, Tuple[str, ...]]],
-        frame: FrameType,
+        undefined_value: typing.Any,
+        include: str | tuple[str, ...] | None,
+        exclude: str | tuple[str, ...] | None,
+        frame: types.FrameType,
     ) -> None:
-        self._function = function
+        self._function = func
         self._args = args
         self._kwargs = kwargs
         self._apply_defaults = apply_defaults
@@ -36,24 +56,93 @@ class FunctionCall:
         self._frame = frame
 
     @property
-    def module(self) -> ModuleType:
-        return getmodule(object=self._function)
+    def module(self) -> types.ModuleType:
+        """
+        Get the module in which the function is defined.
+
+        Returns
+        -------
+        types.ModuleType
+            The module object containing the function.
+        """
+        return inspect.getmodule(object=self._function)
 
     @property
-    def frame(self) -> FrameType:
-        return self._frame
+    def func(self) -> CallableType | types.FunctionType | types.MethodType:
+        """
+        Get the function object being called.
 
-    @property
-    def func(self) -> Union[Callable[..., Any], FunctionType, MethodType]:
+        Returns
+        -------
+        callable
+            The function or method object.
+        """
         return self._function
 
     @property
-    def args(self) -> Tuple[Any, ...]:
+    def args(self) -> ArgsType:
+        """
+        Get the positional arguments passed to the function.
+
+        Returns
+        -------
+        tuple
+            A tuple of positional arguments.
+        """
         return self._args
 
     @property
-    def kwargs(self) -> Dict[str, Any]:
+    def kwargs(self) -> KwargsType:
+        """
+        Get the keyword arguments passed to the function.
+
+        Returns
+        -------
+        dict
+            A dictionary of keyword arguments.
+        """
         return self._kwargs
+
+    @property
+    def signature(self) -> inspect.Signature:
+        """
+        Get the signature of the function.
+
+        Returns
+        -------
+        inspect.Signature
+            The signature object of the function.
+        """
+        return inspect.signature(obj=self._function)
+
+    @property
+    def bound_arguments(self) -> inspect.BoundArguments:
+        """
+        Get the bound arguments for the function call, including default values
+        if applicable.
+
+        Returns
+        -------
+        inspect.BoundArguments
+            The bound arguments, including any defaults applied if
+            `apply_defaults` is True.
+        """
+        bound_arguments = self.signature.bind(*self._args, **self._kwargs)
+        if self._apply_defaults:
+            bound_arguments.apply_defaults()
+        return bound_arguments
+
+    @property
+    def frame(self) -> types.FrameType:
+        """
+        Get the frame object where the function is being called.
+
+        Returns
+        -------
+        types.FrameType
+            The frame object associated with the function call.
+        """
+        return self._frame
 
     def format(
         self,
@@ -101,15 +190,13 @@ class FunctionCall:
         >>> self.format('{arguments}', association=': ', separator=' | ')
         'a: 123 | b: 'abc''
         """
-        module = getmodule(object=self._function)
-        function_signature = signature(obj=self._function)
-        bound_arguments = function_signature.bind(*self._args, **self._kwargs)
-        if self._apply_defaults:
-            bound_arguments.apply_defaults()
-        function_parameters = function_signature.parameters
-        function_arguments = bound_arguments.arguments
+        module = self.module
+        signature = self.signature
+        bound_arguments = self.bound_arguments
+        parameters = signature.parameters
+        arguments = bound_arguments.arguments
         if self._include is None:
-            include = set(function_signature.parameters)
+            include = set(parameters)
         elif isinstance(self._include, str):
             include = {self._include}
         else:
@@ -122,15 +209,15 @@ class FunctionCall:
             exclude = set(self._exclude)
         selected = include - exclude
         arguments = {
-            parameter: function_arguments.get(parameter, self._undefined_value)
-            for parameter in filter(selected.__contains__, function_parameters)
+            parameter: arguments.get(parameter, self._undefined_value)
+            for parameter in filter(selected.__contains__, parameters)
         }
         return pattern.format(
             absolute_path=module.__file__,
             module_name=module.__name__,
             function_name=self._function.__name__,
             function_qualified_name=self._function.__qualname__,
-            line_number=getlineno(frame=self._frame),
+            line_number=inspect.getlineno(frame=self._frame),
             arguments=separator.join(
                 f'{key}{association}{value!r}'
                 for key, value in arguments.items()
@@ -140,22 +227,128 @@ class FunctionCall:
 
 class ElapsedTime:
     """
-    A class to represent elapsed time in seconds and provide various formats.
+    Represents elapsed time in seconds with support for multiple time units and
+    human-readable formatting.
 
-    Attributes
+    Parameters
     ----------
-    elapsed_time : float
+    seconds : float
         The elapsed time in seconds.
     """
-    def __init__(self, elapsed_time: Optional[float] = None) -> None:
-        self.elapsed_time = elapsed_time
+    def __init__(self, seconds: float) -> None:
+        self._seconds = seconds
+
+    @property
+    def elapsed_time(self) -> float:
+        warnings.warn(
+            message='use .seconds instead of .elapsed_time',
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.seconds
+
+    @property
+    def nanoseconds(self) -> float:
+        """
+        Calculate the elapsed time in nanoseconds.
+
+        Returns
+        -------
+        float
+            Elapsed time expressed in nanoseconds.
+        """
+        return self._seconds * 1e9
+
+    @property
+    def microseconds(self) -> float:
+        """
+        Calculate the elapsed time in microseconds.
+
+        Returns
+        -------
+        float
+            Elapsed time expressed in microseconds.
+        """
+        return self._seconds * 1e6
+
+    @property
+    def milliseconds(self) -> float:
+        """
+        Calculate the elapsed time in milliseconds.
+
+        Returns
+        -------
+        float
+            Elapsed time expressed in milliseconds.
+        """
+        return self._seconds * 1e3
+
+    @property
+    def seconds(self) -> float:
+        """
+        Calculate the elapsed time in seconds.
+
+        Returns
+        -------
+        float
+            Total elapsed time in seconds.
+        """
+        return self._seconds
+
+    @property
+    def minutes(self) -> float:
+        """
+        Calculate the elapsed time in minutes.
+
+        Returns
+        -------
+        float
+            Elapsed time expressed in minutes.
+        """
+        return self._seconds / 60
+
+    @property
+    def hours(self) -> float:
+        """
+        Calculate the elapsed time in hours.
+
+        Returns
+        -------
+        float
+            Elapsed time expressed in hours.
+        """
+        return self._seconds / 3600
+
+    @property
+    def days(self) -> float:
+        """
+        Calculate the elapsed time in days.
+
+        Returns
+        -------
+        float
+            Elapsed time expressed in days.
+        """
+        return self._seconds / 86400
+
+    @property
+    def weeks(self) -> float:
+        """
+        Calculate the elapsed time in weeks.
+
+        Returns
+        -------
+        float
+            Elapsed time expressed in weeks.
+        """
+        return self._seconds / 604800
 
     def format(
         self,
         *,
         ignore_zeros: bool = True,
         separator: str = ', ',
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Convert the elapsed time to a human-readable string representation.
 
@@ -165,6 +358,14 @@ class ElapsedTime:
             If True, zero-value units are omitted from the resulting string.
         separator : str, default ', '
             String used to separate different units in the resulting string.
+
+        Returns
+        -------
+        str or None
+            A human-readable string representation of the elapsed time,
+            formatted according to the `ignore_zeros` and `separator`
+            parameters.
+            Returns `None` if the elapsed time is `float('nan')`.
 
         Examples
         --------
@@ -177,7 +378,7 @@ class ElapsedTime:
         >>> self.format(separator=' | ')
         '2 minutes | 3 seconds'
         """
-        if self.elapsed_time is None:
+        if math.isnan(self._seconds):
             return
         weeks = int(self.elapsed_time // 604800)
         days = int(self.elapsed_time % 604800 // 86400)

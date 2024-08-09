@@ -1,8 +1,6 @@
-from __future__ import annotations
-
-from functools import partial
-from inspect import currentframe, getlineno, getmodule
-from unittest import TestCase, main
+import functools
+import inspect
+import unittest
 
 from functrace.utilities import FunctionCall
 
@@ -13,9 +11,9 @@ def func(a=1, b=2) -> int:
     return a + b
 
 
-class TestFunctionCall(TestCase):
+class TestFunctionCall(unittest.TestCase):
     def setUp(self) -> None:
-        self.function_call = partial(
+        self.function_call = functools.partial(
             FunctionCall,
             function=func,
             args=(),
@@ -24,7 +22,7 @@ class TestFunctionCall(TestCase):
             undefined_value=None,
             include=None,
             exclude=None,
-            frame=currentframe(),
+            frame=inspect.currentframe(),
         )
 
     def tearDown(self) -> None:
@@ -33,13 +31,13 @@ class TestFunctionCall(TestCase):
     def test_absolute_path(self) -> None:
         function_call = self.function_call()
         actual = function_call.format(pattern='{absolute_path}')
-        expected = getmodule(object=func).__file__
+        expected = inspect.getmodule(object=func).__file__
         self.assertEqual(first=expected, second=actual)
 
     def test_module_name(self) -> None:
         function_call = self.function_call()
         actual = function_call.format(pattern='{module_name}')
-        expected = getmodule(object=func).__name__
+        expected = inspect.getmodule(object=func).__name__
         self.assertEqual(first=expected, second=actual)
 
     def test_function_name(self) -> None:
@@ -57,7 +55,7 @@ class TestFunctionCall(TestCase):
     def test_line_number(self) -> None:
         function_call = self.function_call()
         actual = function_call.format(pattern='{line_number}')
-        expected = str(getlineno(frame=function_call.frame))
+        expected = str(inspect.getlineno(frame=function_call.frame))
         self.assertEqual(first=expected, second=actual)
 
     def test_arguments(self) -> None:
@@ -116,4 +114,4 @@ class TestFunctionCall(TestCase):
 
 
 if __name__ == '__main__':
-    main()
+    unittest.main()

@@ -1,21 +1,18 @@
-from __future__ import annotations
+import collections.abc
+import dataclasses
+import functools
+import inspect
+import time
+import traceback
+import typing
 
-from dataclasses import dataclass, field
-from functools import partial, wraps
-from inspect import currentframe
-from time import time
-from traceback import format_exc
-from typing import TYPE_CHECKING
-
+from functrace.type_hints import *
 from functrace.utilities import FunctionCall, ElapsedTime
-
-if TYPE_CHECKING:
-    from typing import Any, Callable, Optional, Tuple, Union
 
 __all__ = ('TraceResult', 'trace')
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class TraceResult:
     """
     Captures detailed execution metadata for a traced function,
@@ -49,23 +46,23 @@ class TraceResult:
         return ElapsedTime()
 
     function_call: FunctionCall
-    elapsed_time: ElapsedTime = field(default_factory=empty_elapsed_time)
-    is_started: bool = field(default=False)
-    is_completed: bool = field(default=False)
-    is_failed: bool = field(default=False)
-    returned_value: Any = field(default=None)
-    exception: Optional[Exception] = field(default=None)
-    traceback: Optional[str] = field(default=None)
+    elapsed_time: ElapsedTime = dataclasses.field(default_factory=empty_elapsed_time)
+    is_started: bool = dataclasses.field(default=False)
+    is_completed: bool = dataclasses.field(default=False)
+    is_failed: bool = dataclasses.field(default=False)
+    returned_value: typing.Any = dataclasses.field(default=None)
+    exception: Exception | None = dataclasses.field(default=None)
+    traceback: str | None = dataclasses.field(default=None)
 
 
 def trace(
-    callback: Callable[[TraceResult], None],
+    callback: collections.abc.Callable[[TraceResult], None],
     *,
     apply_defaults: bool = False,
-    undefined_value: Any = None,
-    include: Optional[Union[str, Tuple[str, ...]]] = None,
-    exclude: Optional[Union[str, Tuple[str, ...]]] = None,
-) -> Callable[..., Any]:
+    undefined_value: typing.Any = None,
+    include: str | tuple[str, ...] | None = None,
+    exclude: str | tuple[str, ...] | None = None,
+) -> CallableType:
     """
     Creates a decorator that traces function execution and invokes a callback.
 
@@ -80,10 +77,10 @@ def trace(
     undefined_value : Any, default None
         The value to return for missing arguments.
     include : str, tuple of str, default None
-        Select parameters to include in the TracerResult.
+        Select parameters to include in the :class:`TraceResult`.
         If None, all parameters are included.
     exclude : str, tuple of str, default None
-        Select parameters to exclude from the TracerResult.
+        Select parameters to exclude from the :class:`TraceResult`.
         If None, no parameters are excluded.
 
     Returns
@@ -213,44 +210,45 @@ def trace(
     func(b=2) | Started
     func(b=2) | Completed | 1 microsecond, 200 nanoseconds | 6
     """
-    def decorator(function: Callable[..., Any]) -> Callable[..., Any]:
-        @wraps(wrapped=function)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            partial_result = partial(
+    def decorator(function: CallableType) -> CallableType:
+        @functools.wraps(wrapped=function)
+        def wrapper(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
+            partial_result = functools.partial(
                 TraceResult,
                 function_call=FunctionCall(
-                    function=function,
+                    func=function,
                     args=args,
                     kwargs=kwargs,
                     apply_defaults=apply_defaults,
                     undefined_value=undefined_value,
                     include=include,
                     exclude=exclude,
-                    frame=currentframe().f_back,
+                    frame=inspect.currentframe().f_back,
                 ),
             )
-            tracer_result = partial_result(is_started=True)
+            tracer_result = partial_result(
+                is_started=True,
+                elapsed_time=ElapsedTime(seconds=float('nan'))
+            )
             callback(tracer_result)
-            start_time = time()
+            start_time = time.time()
             try:
                 result = function(*args, **kwargs)
-                end_time = time()
-                elapsed_time = ElapsedTime(elapsed_time=end_time - start_time)
+                end_time = time.time()
                 tracer_result = partial_result(
                     is_completed=True,
-                    elapsed_time=elapsed_time,
+                    elapsed_time=ElapsedTime(seconds=end_time - start_time),
                     returned_value=result,
                 )
                 callback(tracer_result)
                 return result
             except Exception as exception:
-                end_time = time()
-                elapsed_time = ElapsedTime(elapsed_time=end_time - start_time)
+                end_time = time.time()
                 tracer_result = partial_result(
                     is_failed=True,
-                    elapsed_time=elapsed_time,
+                    elapsed_time=ElapsedTime(seconds=end_time - start_time),
                     exception=exception,
-                    traceback=format_exc(),
+                    traceback=traceback.format_exc(),
                 )
                 callback(tracer_result)
                 raise exception
