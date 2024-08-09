@@ -1,9 +1,7 @@
-from __future__ import annotations
+import os
+import sys
 
-from os.path import abspath
-from sys import path
-
-path.insert(0, abspath('..'))
+sys.path.insert(0, os.path.abspath('..'))
 
 import functrace
 
@@ -16,4 +14,6 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.viewcode',
 ]
+# autodoc_class_signature = 'separated'
+autodoc_member_order = 'bysource'
 autodoc_typehints = 'description'
