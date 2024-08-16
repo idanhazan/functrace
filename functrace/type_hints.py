@@ -1,4 +1,4 @@
-import collections.abc
+import collections
 import typing
 
 __all__ = ('CallableType', 'ArgsType', 'KwargsType')

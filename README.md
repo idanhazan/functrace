@@ -49,7 +49,7 @@ def func(a, b, c):
 if __name__ == '__main__':
     func(1, 2, 3)
     # func(a=1, b=2, c=3) | Started
-    # func(a=1, b=2, c=3) | Completed | 1 microsecond, 200 nanoseconds | (1, 2, 3)
+    # func(a=1, b=2, c=3) | Completed | 1.25 microseconds | (1, 2, 3)
 ```
 
 ## Summary
